@@ -15,6 +15,10 @@ langserve = {extras = ["server"], version = ">=0.0.30"}
 pydantic = "<2"
 rag-neo4j = {path = "packages/rag-neo4j", develop = true}
 sql-pgvector = {path = "packages/sql-pgvector", develop = true}
+python-dotenv = "^1.0.0"
+openai = "*"
+azure-identity = "*"
+html2text = "*"
 
 
 [tool.poetry.group.dev.dependencies]
