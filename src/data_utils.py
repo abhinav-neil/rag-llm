@@ -1,6 +1,7 @@
-from langchain.sql_database import SQLDatabase
+from typing import Optional
 import ast
 from html2text import html2text
+from langchain.sql_database import SQLDatabase
 from src.utils import *
 
 class SQLDBManager():
@@ -40,13 +41,12 @@ class SQLDBManager():
         except Exception as e:
             print(f"connection to database failed: {e}")
         
-    def filter_table(self, table_name: str, cols_path: str, new_table_name: str, primary_key: str):
+    def filter_table(self, src_table: str, cols_path: str, primary_key: str):
         '''
         Create new table with only required fields from old table.
         Args:
-            table_name (str): name of table to filter
+            src_table (str): name of table to filter
             cols_path (str): path to file with required fields
-            new_table_name (str): name of new table
             primary_key (str): name of primary key
         
         '''
@@ -57,31 +57,33 @@ class SQLDBManager():
 
         # create new table with required fields from old table
         # create table query
+        data_table = f'{src_table}_filtered'
+        
         create_table_query = f"""
-        CREATE TABLE {new_table_name} AS 
+        CREATE TABLE {data_table} AS 
         SELECT {columns_str} 
-        FROM {table_name}
+        FROM {src_table}
         WITH DATA;
-        ALTER TABLE {new_table_name} ADD PRIMARY KEY ({primary_key});
+        ALTER TABLE {data_table} ADD PRIMARY KEY ({primary_key});
         """
         # run query to create new table
         try:
             self.db.run(create_table_query)
-            print(f"table {new_table_name} created successfully.")
+            print(f"table {data_table} created successfully.")
         except Exception as e:
             print(f"an error occurred: {e}")
             
-    def clean_html(self, table_name: str, cols_to_clean: list, primary_key: str):
+    def clean_html(self, data_table: str, cols_to_clean: list, primary_key: str):
         '''
         Clean html from columns in table.
         Args:
-            table_name (str): name of table
+            data_table (str): name of table
             cols_to_clean (list): list of columns to clean
             primary_key (str): name of primary key
         '''
         for col in cols_to_clean:
             # fetch rows for the column to clean
-            rows_str = self.db.run(f"SELECT {primary_key}, {col} FROM {table_name}")
+            rows_str = self.db.run(f"SELECT {primary_key}, {col} FROM {data_table}")
             rows = ast.literal_eval(rows_str)  # convert string to list
             rows = [(row[0], row[1]) for row in rows]  # convert list of tuples to list of (id, description)
 
@@ -91,27 +93,27 @@ class SQLDBManager():
 
             # update the database with cleaned text
             for pk, cleaned_text in cleaned_rows:
-                update_query = f"UPDATE {table_name} SET {col} = '{cleaned_text}' WHERE {primary_key} = '{pk}';"
+                update_query = f"UPDATE {data_table} SET {col} = '{cleaned_text}' WHERE {primary_key} = '{pk}';"
                 try:
                     self.db.run(update_query)
                 except Exception as e:
                     print(f"error updating row {pk}: {e}")
                     continue
                             
-    def create_embs_col(self, table_name: str, col_to_embed: str, embs_model):
+    def create_embs_col(self, data_table: str, col_to_embed: str, embs_model):
         '''
         Create new column in table for storing embeddings.
         Args:
-            table_name (str): name of table
+            data_table (str): name of table
             col_to_embed (str): name of column to embed
-            embs_model (EmbeddingsModel): embeddings model
+            embs_model: embeddings model
         '''
         # check and create a column for embeddings if it doesn't exist
         embs_col_name = f"{col_to_embed}_embs"
-        self.db.run(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {embs_col_name} DOUBLE PRECISION[];")
+        self.db.run(f"ALTER TABLE {data_table} ADD COLUMN IF NOT EXISTS {embs_col_name} DOUBLE PRECISION[];")
 
         # get column values to embed
-        result_str = self.db.run(f'SELECT {col_to_embed} FROM {table_name}')
+        result_str = self.db.run(f'SELECT {col_to_embed} FROM {data_table}')
         column_values = [s[0] for s in ast.literal_eval(result_str)]
         embeddings = embs_model.embed_documents(column_values)
 
@@ -119,13 +121,31 @@ class SQLDBManager():
         for i, value in enumerate(column_values):
             cleaned_value = value.replace("'", "''")  # escape single quotes
             embedding = embeddings[i]
-            query = f"UPDATE {table_name} SET {embs_col_name} = ARRAY{embedding} WHERE {col_to_embed} = '{cleaned_value}';"
+            query = f"UPDATE {data_table} SET {embs_col_name} = ARRAY{embedding} WHERE {col_to_embed} = '{cleaned_value}';"
             try:
                 self.db.run(query)
             except Exception as e:
                 print(f"An error occurred: {e}")
 
         print(f"embeddings col {embs_col_name} created successfully.")
+       
+    # def ingest_data(self, data_table: str, text_col: str, primary_key: str, embs_model, filter_table: bool=True, req_cols_path: Optional[str] = None, clean_html: bool=True):
+    #     """
+    #     Ingests data from a SQL database into a new table, with a new column containing the embeddings of the text column.
+    #     """
+    #     # filter data table to only include required columns and create new table (if it doesn't exist)
+    #     if filter_table:
+    #         assert req_cols_path is not None and os.path.exists(req_cols_path), "please provide a valid path to a file with required columns."
+    #         new_data_table = f"{data_table}_filtered"
+    #         self.filter_table(data_table, req_cols_path, new_data_table, primary_key)
+        
+    #     # clean html text in text col before creating embeddings
+    #     if clean_html:
+    #         new_data_table = f"{data_table}_filtered" if filter_table else data_table
+    #         self.clean_html(new_data_table, [text_col], primary_key)
+        
+    #     # create embeddings for text col
+    #     self.create_embs_col(new_data_table, text_col, embs_model)
         
     def drop_col(self, table_name: str, col_to_drop: str):
         '''

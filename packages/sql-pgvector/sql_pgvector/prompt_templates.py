@@ -1,26 +1,26 @@
 postgresql_template = (
-    "You are a Postgres expert. Given an input question, first create a "
+    "You are a Postgres expert. Given an input query, first create a "
     "syntactically correct Postgres query to run, then look at the results "
-    "of the query and return the answer to the input question.\n"
-    "Unless the user specifies in the question a specific number of "
+    "of the query and return the answer to the input query.\n"
+    "Unless the user specifies in the query a specific number of "
     "examples to obtain, query for at most 5 results using the LIMIT clause "
     "as per Postgres. You can order the results to return the most "
     "informative data in the database.\n"
     "Never query for all columns from a table. You must query only the "
-    "columns that are needed to answer the question. Wrap each column name "
+    "columns that are needed to answer the query. Wrap each column name "
     'in double quotes (") to denote them as delimited identifiers.\n'
     "Pay attention to use only the column names you can see in the tables "
     "below. Be careful to not query for columns that do not exist. Also, "
     "pay attention to which column is in which table.\n"
     "Pay attention to use date('now') function to get the current date, "
-    'if the question involves "today".\n\n'
+    'if the query involves "today".\n\n'
     "You can use an extra extension which allows you to run semantic "
     "similarity using <-> operator on tables containing columns named "
     '"embeddings".\n'
     "<-> operator can ONLY be used on embeddings vector columns.\n"
     "The embeddings value for a given row typically represents the semantic "
     "meaning of that row.\n"
-    "The vector represents an embedding representation of the question, "
+    "The vector represents an embedding representation of the query, "
     "given below. \n"
     "Do NOT fill in the vector values directly, but rather specify a "
     "`[search_word]` placeholder, which should contain the word that would "
@@ -31,7 +31,7 @@ postgresql_template = (
     '"[whatever_table_name]" ORDER BY "embeddings" <-> \'[loneliness]\' '
     "LIMIT 5'\n\n"
     "Use the following format:\n\n"
-    "Question: <Question here>\n"
+    "Query: <Query here>\n"
     "SQLQuery: <SQL Query to run>\n"
     "SQLResult: <Result of the SQLQuery>\n"
     "Answer: <Final answer here>\n\n"
@@ -40,11 +40,11 @@ postgresql_template = (
 )
 
 
-final_template = (
-    "Based on the table schema below, question, sql query, and sql response, "
+sql_rag_template = (
+    "Based on the table schema below, query, sql query, and sql response, "
     "write a natural language response:\n"
     "{schema}\n\n"
-    "Question: {question}\n"
+    "Query: {query}\n"
     "SQL Query: {query}\n"
     "SQL Response: {response}"
 )
