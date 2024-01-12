@@ -4,3 +4,4 @@
 # folders
 __pycache__/
 data/
+neo4j-etl-cli-*

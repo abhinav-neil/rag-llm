@@ -1,7 +1,9 @@
-from typing import Optional
-import ast
+from ast import literal_eval
 from html2text import html2text
 from langchain.sql_database import SQLDatabase
+from langchain.graphs import Neo4jGraph
+import psycopg2
+import pandas as pd
 from src.utils import *
 
 class SQLDBManager():
@@ -18,28 +20,17 @@ class SQLDBManager():
         '''
         instance = cls()
         # get postgres env variables
-        postgres_user = get_env_variable("POSTGRES_USER")
-        postgres_password = get_env_variable("POSTGRES_PASSWORD")
-        postgres_db = get_env_variable("POSTGRES_DB")
-        postgres_host = get_env_variable("POSTGRES_HOST")
-        postgres_port = get_env_variable("POSTGRES_PORT")
+        host, port, db, user, password = load_postgres_env_variables()
         
         # connect to DB
-        instance.connect_to_db(postgres_user, postgres_password, postgres_db, postgres_host, postgres_port)
-        
-        return instance
-        
-    def connect_to_db(self, postgres_user: str, postgres_password: str, postgres_db: str, postgres_host: str, postgres_port: str):
-        # connect to DB
-        connection_string = (
-            f"postgresql+psycopg2://{postgres_user}:{postgres_password}"
-            f"@{postgres_host}:{postgres_port}/{postgres_db}"
-        )
+        conn_str = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{db}"
         try:
-            self.db = SQLDatabase.from_uri(connection_string)
-            print("connected to database successfully.")
+            instance.db = SQLDatabase.from_uri(conn_str)
+            print("connected to database")
         except Exception as e:
             print(f"connection to database failed: {e}")
+        
+        return instance
         
     def filter_table(self, src_table: str, cols_path: str, primary_key: str):
         '''
@@ -84,7 +75,7 @@ class SQLDBManager():
         for col in cols_to_clean:
             # fetch rows for the column to clean
             rows_str = self.db.run(f"SELECT {primary_key}, {col} FROM {data_table}")
-            rows = ast.literal_eval(rows_str)  # convert string to list
+            rows = literal_eval(rows_str)  # convert string to list
             rows = [(row[0], row[1]) for row in rows]  # convert list of tuples to list of (id, description)
 
             # clean html and escape single quotes
@@ -114,7 +105,7 @@ class SQLDBManager():
 
         # get column values to embed
         result_str = self.db.run(f'SELECT {col_to_embed} FROM {data_table}')
-        column_values = [s[0] for s in ast.literal_eval(result_str)]
+        column_values = [s[0] for s in literal_eval(result_str)]
         embeddings = embs_model.embed_documents(column_values)
 
         # update table with embeddings
@@ -128,42 +119,23 @@ class SQLDBManager():
                 print(f"An error occurred: {e}")
 
         print(f"embeddings col {embs_col_name} created successfully.")
-       
-    # def ingest_data(self, data_table: str, text_col: str, primary_key: str, embs_model, filter_table: bool=True, req_cols_path: Optional[str] = None, clean_html: bool=True):
-    #     """
-    #     Ingests data from a SQL database into a new table, with a new column containing the embeddings of the text column.
-    #     """
-    #     # filter data table to only include required columns and create new table (if it doesn't exist)
-    #     if filter_table:
-    #         assert req_cols_path is not None and os.path.exists(req_cols_path), "please provide a valid path to a file with required columns."
-    #         new_data_table = f"{data_table}_filtered"
-    #         self.filter_table(data_table, req_cols_path, new_data_table, primary_key)
-        
-    #     # clean html text in text col before creating embeddings
-    #     if clean_html:
-    #         new_data_table = f"{data_table}_filtered" if filter_table else data_table
-    #         self.clean_html(new_data_table, [text_col], primary_key)
-        
-    #     # create embeddings for text col
-    #     self.create_embs_col(new_data_table, text_col, embs_model)
-        
-    def drop_col(self, table_name: str, col_to_drop: str):
+              
+    def drop_cols(self, table_name: str, cols_to_drop: list):
         '''
-        Drop column from table.
+        Drop columns from table.
         Args:
             table_name (str): name of table
-            col_to_drop (str): name of column to drop
+            cols_to_drop (list): list of column names to drop
         '''
-        # drop column
-        drop_col_query = f"""
-        ALTER TABLE {table_name} DROP COLUMN {col_to_drop};
-        """
-        try:
-            self.db.run(drop_col_query)
-            print(f"column {col_to_drop} dropped successfully.")
-        except Exception as e:
-            print(f"an error occurred: {e}")
-            
+        for col in cols_to_drop:
+            # drop column
+            drop_col_query = f"ALTER TABLE {table_name} DROP COLUMN {col};"
+            try:
+                self.db.run(drop_col_query)
+            except Exception as e:
+                print(f"an error occurred while dropping column {col}: {e}")
+        print('done.')
+        
     def drop_table(self, table_name: str):
         '''
         Drop table.
@@ -179,3 +151,134 @@ class SQLDBManager():
             print(f"table {table_name} dropped successfully.")
         except Exception as e:
             print(f"an error occurred: {e}")
+
+    def get_col_names(self, schema: str, table: str) -> list:
+        '''
+        Get column names from table.
+        '''
+        select_cols_q = f'''
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = '{schema}'
+            AND table_name = '{table}';
+        '''
+        cols = self.db.run(select_cols_q)
+        cols = literal_eval(cols)
+        cols = [col[0] for col in cols]
+        
+        return cols
+
+def parse_db_output(output_str: str):    
+    
+    '''
+    Parse output from SQL database from string to list of tuples.
+    Args:
+        output_str (str): output from SQL database
+    Returns:
+        parsed_data (list): list of tuples
+    '''
+    # function to convert string to appropriate type
+    def convert_element(e):
+        try:
+            return literal_eval(e)
+        except (ValueError, SyntaxError):
+            return e.strip("'")
+
+    # split the string into individual tuples
+    tuples = output_str.strip('[]').split('), (')
+    parsed_data = []
+
+    for t in tuples:
+        t = t.strip('()')
+        elements = []
+        temp_element = ''
+        in_datetime = False
+        for char in t:
+            if char == ',' and not in_datetime:
+                elements.append(temp_element)
+                temp_element = ''
+            else:
+                temp_element += char
+                if char == '(':
+                    in_datetime = True
+                elif char == ')':
+                    in_datetime = False
+        elements.append(temp_element) 
+
+        # convert elements to their appropriate types
+        converted_elements = [convert_element(e.strip()) for e in elements]
+        parsed_data.append(tuple(converted_elements))
+
+    return parsed_data
+
+class Neo4jGraphManager():
+    '''
+    Class for managing Neo4j graph database.
+    '''
+    def __init__(self):
+        pass
+    
+    @classmethod
+    def from_env(cls):
+        '''
+        Connect to database using environment variables.
+        '''
+        instance = cls()
+        instance.graph = Neo4jGraph()
+        return instance
+    
+    def from_table(self, table: str, reset=True):
+        '''
+        Create a neo4j graph from a table (in string format)
+        Args:
+            table (str): name of table
+            reset (bool): reset graph if it already exists
+        '''
+        # table_data = parse_db_output(table) # convert string to list of tuples
+        # connect to postgres db
+        host, port, db, user, password = load_postgres_env_variables()
+        conn = psycopg2.connect(f"host={host} port={port} dbname={db} user={user} password={password}")
+        
+        # fetch data from table
+        query = f"SELECT * FROM {table};"
+        df = pd.read_sql(query, conn)
+        conn.close()                        
+        
+        if reset:
+            # clear graph (in case it already exists)
+            self.graph.query('MATCH (n) DETACH DELETE n')
+
+        # iter over df rows
+        for _, row in df.iterrows():
+            # convert tuple to dict
+            # row_dict = {cols[i]: row[i] for i in range(len(cols))}
+            row_dict = row.to_dict()
+            # create a node for each row with dynamic properties
+            self.graph.query(
+                """
+                CREATE (n:Object)
+                SET n += $props
+                """,
+                {"props": row_dict}  # pass the dictionary as a parameter
+            )
+        
+        # create relationships
+        # user stories belonging to epics and goals
+        self.graph.query(
+            """
+            MATCH (us:Object {pxobjclass: 'PegaProjMgmt-Work-UserStory'}),
+                  (epic:Object {pxinsname: us.epicid}),
+                  (goal:Object {pxinsname: us.goalid})
+            CREATE (us)-[:BELONGS_TO_EPIC]->(epic),
+                   (us)-[:BELONGS_TO_GOAL]->(goal)
+            """
+        )
+
+        # epics belonging to goals
+        self.graph.query(
+            """
+            MATCH (epic:Object {pxobjclass: 'PegaProjMgmt-Work-UserStory-Epic'}),
+                  (goal:Object {pxinsname: epic.goalid})
+            CREATE (epic)-[:BELONGS_TO_GOAL]->(goal)
+            """
+        )

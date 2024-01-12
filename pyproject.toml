@@ -11,6 +11,7 @@ packages = [
 [tool.poetry.dependencies]
 python = "^3.11"
 uvicorn = "^0.23.2"
+langchain = ">=0.0.313, <0.1"
 langserve = {extras = ["server"], version = ">=0.0.30"}
 pydantic = "<2"
 rag-neo4j = {path = "packages/rag-neo4j", develop = true}
@@ -19,6 +20,9 @@ python-dotenv = "^1.0.0"
 openai = "*"
 azure-identity = "*"
 html2text = "*"
+langchain-experimental = "^0.0.47"
+pandas = "^2.1.4"
+psycopg2 = "2.9.9"
 
 
 [tool.poetry.group.dev.dependencies]

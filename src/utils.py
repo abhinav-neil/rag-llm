@@ -9,6 +9,18 @@ def get_env_variable(var_name):
         raise EnvironmentError(f"Environment variable {var_name} not set.")
     return value
 
+def load_postgres_env_variables():
+    '''
+    Load environment variables for postgres database.
+    '''
+    host = get_env_variable("POSTGRES_HOST")
+    port = get_env_variable("POSTGRES_PORT")
+    db = get_env_variable("POSTGRES_DB")
+    user = get_env_variable("POSTGRES_USER")
+    password = get_env_variable("POSTGRES_PASSWORD")
+    
+    return host, port, db, user, password
+
 def setup_azure_openai(
     api_base: str = "https://aze-openai-03.openai.azure.com/",
     api_version: Literal[
