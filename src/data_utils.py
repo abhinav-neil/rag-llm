@@ -262,11 +262,26 @@ class Neo4jGraphManager():
                 {"props": row_dict}  # pass the dictionary as a parameter
             )
         
+        # rename pxobjclass prop
+        self.graph.query(
+            """
+            MATCH (n:Object)
+            SET n.pxobjclass = 
+                CASE
+                    WHEN toUpper(n.pxobjclass) CONTAINS 'US' THEN 'US'
+                    WHEN toUpper(n.pxobjclass) CONTAINS 'EPIC' THEN 'EPIC'
+                    WHEN toUpper(n.pxobjclass) CONTAINS 'GOAL' THEN 'GOAL'
+                    ELSE n.pxobjclass
+                END
+
+            """
+        )
+        
         # create relationships
         # user stories belonging to epics and goals
         self.graph.query(
             """
-            MATCH (us:Object {pxobjclass: 'PegaProjMgmt-Work-UserStory'}),
+            MATCH (us:Object {pxobjclass: 'US'}),
                   (epic:Object {pxinsname: us.epicid}),
                   (goal:Object {pxinsname: us.goalid})
             CREATE (us)-[:BELONGS_TO_EPIC]->(epic),
@@ -277,8 +292,9 @@ class Neo4jGraphManager():
         # epics belonging to goals
         self.graph.query(
             """
-            MATCH (epic:Object {pxobjclass: 'PegaProjMgmt-Work-UserStory-Epic'}),
+            MATCH (epic:Object {pxobjclass: 'EPIC'}),
                   (goal:Object {pxinsname: epic.goalid})
             CREATE (epic)-[:BELONGS_TO_GOAL]->(goal)
             """
         )
+        
