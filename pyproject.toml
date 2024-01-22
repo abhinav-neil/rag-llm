@@ -17,12 +17,13 @@ pydantic = "<2"
 rag-neo4j = {path = "packages/rag-neo4j", develop = true}
 sql-pgvector = {path = "packages/sql-pgvector", develop = true}
 python-dotenv = "^1.0.0"
-openai = "*"
+openai = "1.6.1"
 azure-identity = "*"
 html2text = "*"
 langchain-experimental = "^0.0.47"
 pandas = "^2.1.4"
 psycopg2 = "2.9.9"
+langchain-openai = "*"
 
 
 [tool.poetry.group.dev.dependencies]

@@ -14,7 +14,7 @@ class SQLDBManager():
         pass
        
     @classmethod 
-    def from_env(cls):
+    def from_env(cls, **kwargs):
         '''
         Connect to database using environment variables.
         '''
@@ -25,36 +25,37 @@ class SQLDBManager():
         # connect to DB
         conn_str = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{db}"
         try:
-            instance.db = SQLDatabase.from_uri(conn_str)
+            instance.db = SQLDatabase.from_uri(conn_str, **kwargs)
             print("connected to database")
         except Exception as e:
             print(f"connection to database failed: {e}")
         
         return instance
         
-    def filter_table(self, src_table: str, cols_path: str, primary_key: str):
+    def filter_table(self, src_table: str, req_cols_path: str, primary_key: str, overwrite=False):
         '''
         Create new table with only required fields from old table.
         Args:
             src_table (str): name of table to filter
-            cols_path (str): path to file with required fields
+            req_cols_path (str): path to file with required fields
             primary_key (str): name of primary key
-        
+            overwrite (bool): overwrite table if it already exists
         '''
         # read required fields from file
-        with open(cols_path, 'r') as file:
-            columns = [line.strip() for line in file.readlines()]
-        columns_str = ', '.join(columns)
+        with open(req_cols_path, 'r') as file:
+            cols = [line.strip() for line in file.readlines()]
+        cols = ', '.join(cols)
+        
+        data_table = f'{src_table}_filtered'
+
+        if overwrite:
+            # drop table if it already exists
+            self.drop_table(data_table)
 
         # create new table with required fields from old table
-        # create table query
-        data_table = f'{src_table}_filtered'
-        
         create_table_query = f"""
         CREATE TABLE {data_table} AS 
-        SELECT {columns_str} 
-        FROM {src_table}
-        WITH DATA;
+        SELECT {cols} FROM {src_table} WITH DATA;
         ALTER TABLE {data_table} ADD PRIMARY KEY ({primary_key});
         """
         # run query to create new table
@@ -253,48 +254,31 @@ class Neo4jGraphManager():
             # convert tuple to dict
             # row_dict = {cols[i]: row[i] for i in range(len(cols))}
             row_dict = row.to_dict()
+            obj_class = row_dict.get('pxobjclass', 'Object')
             # create a node for each row with dynamic properties
-            self.graph.query(
-                """
-                CREATE (n:Object)
-                SET n += $props
-                """,
-                {"props": row_dict}  # pass the dictionary as a parameter
-            )
-        
-        # rename pxobjclass prop
-        self.graph.query(
-            """
-            MATCH (n:Object)
-            SET n.pxobjclass = 
-                CASE
-                    WHEN toUpper(n.pxobjclass) CONTAINS 'US' THEN 'US'
-                    WHEN toUpper(n.pxobjclass) CONTAINS 'EPIC' THEN 'EPIC'
-                    WHEN toUpper(n.pxobjclass) CONTAINS 'GOAL' THEN 'GOAL'
-                    ELSE n.pxobjclass
-                END
-
-            """
-        )
-        
+            self.graph.query(f"CREATE (n:{obj_class}) SET n += $props", {"props": row_dict})
+               
         # create relationships
-        # user stories belonging to epics and goals
+        # user stories belonging to epics
         self.graph.query(
             """
-            MATCH (us:Object {pxobjclass: 'US'}),
-                  (epic:Object {pxinsname: us.epicid}),
-                  (goal:Object {pxinsname: us.goalid})
-            CREATE (us)-[:BELONGS_TO_EPIC]->(epic),
-                   (us)-[:BELONGS_TO_GOAL]->(goal)
+            MATCH (us:UserStory), (epic:Epic) WHERE us.epicid = epic.pyid
+            MERGE (us)-[:IS_STORY_OF_EPIC]->(epic)
             """
         )
-
         # epics belonging to goals
         self.graph.query(
             """
-            MATCH (epic:Object {pxobjclass: 'EPIC'}),
-                  (goal:Object {pxinsname: epic.goalid})
-            CREATE (epic)-[:BELONGS_TO_GOAL]->(goal)
+            MATCH (epic:Epic), (goal:Goal) WHERE epic.goalid = goal.pyid
+            MERGE (epic)-[:IS_EPIC_OF_GOAL]->(goal)
+            """
+        )
+        # goals belonging to projects
+        # Note: Adjust the label for projects if you have a specific one
+        self.graph.query(
+            """
+            MATCH (goal:Goal), (project:Project) WHERE goal.projectid = project.pyid
+            MERGE (goal)-[:IS_GOAL_OF_PROJECT]->(project)
             """
         )
         
