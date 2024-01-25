@@ -1,6 +1,8 @@
 import os
+import re
 from typing import Literal
 from dotenv import load_dotenv
+import pandas as pd
 
 def get_env_variable(var_name):
     load_dotenv()
@@ -108,3 +110,34 @@ def setup_azure_openai(
         os.environ["OPENAI_API_VERSION"] = api_version
         
     print("Successfully setup Azure OpenAI authentication")
+    
+    
+def eval_rag_responses(responses_eval_path: str) -> dict:
+    """
+    Evaluate RAG responses and return metrics dict.
+    Args:
+        responses_eval_path: Path to the responses_eval.csv file.
+    Returns:
+        metrics: Dict with metrics.
+    """
+    df_responses_eval = pd.read_csv(responses_eval_path, sep=';', index_col='id')
+    num_queries_easy = len(df_responses_eval[df_responses_eval['difficulty'] == 'easy'])
+    num_queries_hard = len(df_responses_eval[df_responses_eval['difficulty'] == 'hard'])
+    num_queries = len(df_responses_eval)
+    num_correct_easy = len(df_responses_eval[(df_responses_eval['difficulty'] == 'easy') & (df_responses_eval['correct'] == True)])
+    num_correct_hard = len(df_responses_eval[(df_responses_eval['difficulty'] == 'hard') & (df_responses_eval['correct'] == True)])
+    num_correct = len(df_responses_eval[df_responses_eval['correct'] == True])
+    
+    eval_res = {
+        'num_queries': num_queries,
+        'num_correct': num_correct,
+        'num_queries_easy': num_queries_easy,
+        'num_correct_easy': num_correct_easy,
+        'num_queries_hard': num_queries_hard,
+        'num_correct_hard': num_correct_hard,
+        'accuracy': num_correct / num_queries,
+        'accuracy_easy': num_correct_easy / num_queries_easy,
+        'accuracy_hard': num_correct_hard / num_queries_hard,
+    }
+    
+    return eval_res
