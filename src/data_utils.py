@@ -2,6 +2,8 @@ from ast import literal_eval
 from html2text import html2text
 from langchain.sql_database import SQLDatabase
 from langchain.graphs import Neo4jGraph
+from langchain_openai import AzureOpenAIEmbeddings
+from langchain.vectorstores import Neo4jVector
 import psycopg2
 import pandas as pd
 from src.utils import *
@@ -282,3 +284,28 @@ class Neo4jGraphManager():
             """
         )
         
+    def embed_objs(
+        obj_types: [] = ['Epic', 'UserStory', 'Goal', 'Project', 'Backlog'],
+        text_cols: [] = ['description']):
+        '''
+        Get embeddings from text descriptions of objects in graph.
+        Args:
+        - obj_types (list): list of object types
+        - text_cols (list): list of text columns to embed
+        '''
+        embs_model = AzureOpenAIEmbeddings(azure_deployment="text-embedding-ada-002") # instantiate embeddings model
+        
+        url, username, password, db = load_neo4j_env_variables()    # load neo4j env vars
+        
+        # create vector index & embs for each object type
+        for obj in obj_types:
+            vector_index = Neo4jVector.from_existing_graph(
+                embs_model,
+                url=url,
+                username=username,
+                password=password,
+                index_name=obj,
+                node_label=obj,
+                text_node_properties=text_cols,
+                embedding_node_property='embedding',
+            )

@@ -23,6 +23,17 @@ def load_postgres_env_variables():
     
     return host, port, db, user, password
 
+def load_neo4j_env_variables():
+    '''
+    Load environment variables for neo4j database.
+    '''
+    uri = get_env_variable("NEO4J_URI")
+    user = get_env_variable("NEO4J_USERNAME")
+    password = get_env_variable("NEO4J_PASSWORD")
+    db = os.environ.get("NEO4J_DB", "neo4j")
+    
+    return uri, user, password, db
+
 def setup_azure_openai(
     api_base: str = "https://aze-openai-03.openai.azure.com/",
     api_version: Literal[
