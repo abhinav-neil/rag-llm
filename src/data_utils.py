@@ -28,7 +28,7 @@ class SQLDBManager():
         conn_str = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{db}"
         try:
             instance.db = SQLDatabase.from_uri(conn_str, **kwargs)
-            print("connected to database")
+            # print("connected to database")
         except Exception as e:
             print(f"connection to database failed: {e}")
         
@@ -94,32 +94,37 @@ class SQLDBManager():
                     print(f"error updating row {pk}: {e}")
                     continue
                             
-    def create_embs_col(self, data_table: str, col_to_embed: str, embs_model):
+    def embed_objs(self, data_table: str, cols_to_embed: list, pk: str):
         '''
-        Create new column in table for storing embeddings.
+        Create new column in table with embeddings.
         Args:
             data_table (str): name of table
-            col_to_embed (str): name of column to embed
-            embs_model: embeddings model
+            cols_to_embed (list): list of column names to embed
+            pk (str): name of the primary key or unique identifier column
         '''
         # check and create a column for embeddings if it doesn't exist
-        embs_col_name = f"{col_to_embed}_embs"
+        embs_col_name = "embeddings"
         self.db.run(f"ALTER TABLE {data_table} ADD COLUMN IF NOT EXISTS {embs_col_name} DOUBLE PRECISION[];")
 
-        # get column values to embed
-        result_str = self.db.run(f'SELECT {col_to_embed} FROM {data_table}')
-        column_values = [s[0] for s in literal_eval(result_str)]
+        # get column values to embed and the ids
+        cols_to_embed_str = ', '.join(cols_to_embed)
+        result_str = self.db.run(f'SELECT {pk}, {cols_to_embed_str} FROM {data_table}')
+        ids_and_values = literal_eval(result_str)
+        ids = [row[0] for row in ids_and_values]
+        column_values = [' '.join(map(str, row[1:])) for row in ids_and_values]
+
+        # create embeddings
+        embs_model = AzureOpenAIEmbeddings(azure_deployment="text-embedding-ada-002") # instantiate embeddings model
         embeddings = embs_model.embed_documents(column_values)
 
         # update table with embeddings
-        for i, value in enumerate(column_values):
-            cleaned_value = value.replace("'", "''")  # escape single quotes
+        for i, id in enumerate(ids):
             embedding = embeddings[i]
-            query = f"UPDATE {data_table} SET {embs_col_name} = ARRAY{embedding} WHERE {col_to_embed} = '{cleaned_value}';"
+            query = f"UPDATE {data_table} SET {embs_col_name} = ARRAY{embedding} WHERE {pk} = '{id}';"
             try:
                 self.db.run(query)
             except Exception as e:
-                print(f"An error occurred: {e}")
+                print(f"an error occurred: {e}")
 
         print(f"embeddings col {embs_col_name} created successfully.")
               
@@ -285,8 +290,9 @@ class Neo4jGraphManager():
         )
         
     def embed_objs(
-        obj_types: [] = ['Epic', 'UserStory', 'Goal', 'Project', 'Backlog'],
-        text_cols: [] = ['description']):
+        self,
+        obj_types: list = ['Epic', 'UserStory', 'Goal', 'Project', 'Backlog'],
+        text_cols: list = ['pylabel', 'description']):
         '''
         Get embeddings from text descriptions of objects in graph.
         Args:
