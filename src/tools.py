@@ -45,7 +45,7 @@ def graph_sim_search(user_query):
     embs_model = AzureOpenAIEmbeddings(azure_deployment="text-embedding-ada-002") # instantiate embeddings model
     matches = []
     embedding = embs_model.embed_query(user_query)
-    threshold = 0.8   # similarity threshold 
+    threshold = 0.75   # similarity threshold 
     query = '''
         WITH $embedding AS inputEmbedding
         MATCH (n)

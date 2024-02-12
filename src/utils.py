@@ -1,5 +1,6 @@
 import os
 import re
+import json
 from typing import Literal
 from dotenv import load_dotenv
 import pandas as pd
@@ -123,11 +124,12 @@ def setup_azure_openai(
     print("Successfully setup Azure OpenAI authentication")
     
     
-def eval_rag_responses(responses_eval_path: str) -> dict:
+def eval_rag_responses(responses_eval_path: str, results_path: str) -> dict:
     """
     Evaluate RAG responses and return metrics dict.
     Args:
         responses_eval_path: Path to the responses_eval.csv file.
+        results_path: Path to save the results.
     Returns:
         metrics: Dict with metrics.
     """
@@ -150,5 +152,8 @@ def eval_rag_responses(responses_eval_path: str) -> dict:
         'accuracy_easy': num_correct_easy / num_queries_easy,
         'accuracy_hard': num_correct_hard / num_queries_hard,
     }
+    
+    with open(results_path, 'w') as f:
+        json.dump(eval_res, f)
     
     return eval_res
