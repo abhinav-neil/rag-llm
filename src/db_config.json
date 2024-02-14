@@ -1,8 +1,0 @@
-{
-    "data_table": "pegadata.ppm_work_filtered",
-    "text_col": "pydescription",
-    "primary_key": "pxinsname",
-    "filter_table": false,
-    "req_cols_path": "data/pega-as-clone/req_fields.txt",
-    "clean_html": false
-}

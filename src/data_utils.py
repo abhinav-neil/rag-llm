@@ -176,49 +176,6 @@ class SQLDBManager():
         
         return cols
 
-def parse_db_output(output_str: str):    
-    
-    '''
-    Parse output from SQL database from string to list of tuples.
-    Args:
-        output_str (str): output from SQL database
-    Returns:
-        parsed_data (list): list of tuples
-    '''
-    # function to convert string to appropriate type
-    def convert_element(e):
-        try:
-            return literal_eval(e)
-        except (ValueError, SyntaxError):
-            return e.strip("'")
-
-    # split the string into individual tuples
-    tuples = output_str.strip('[]').split('), (')
-    parsed_data = []
-
-    for t in tuples:
-        t = t.strip('()')
-        elements = []
-        temp_element = ''
-        in_datetime = False
-        for char in t:
-            if char == ',' and not in_datetime:
-                elements.append(temp_element)
-                temp_element = ''
-            else:
-                temp_element += char
-                if char == '(':
-                    in_datetime = True
-                elif char == ')':
-                    in_datetime = False
-        elements.append(temp_element) 
-
-        # convert elements to their appropriate types
-        converted_elements = [convert_element(e.strip()) for e in elements]
-        parsed_data.append(tuple(converted_elements))
-
-    return parsed_data
-
 class Neo4jGraphManager():
     '''
     Class for managing Neo4j graph database.
