@@ -7,23 +7,26 @@ from langchain.vectorstores import Neo4jVector
 import psycopg2
 import pandas as pd
 from src.utils import *
+from src.config import *
 
-class SQLDBManager():
-    '''
+
+class SQLDBManager:
+    """
     Class for managing SQL database.
-    '''
+    """
+
     def __init__(self):
         pass
-       
-    @classmethod 
+
+    @classmethod
     def from_env(cls, **kwargs):
-        '''
+        """
         Connect to database using environment variables.
-        '''
+        """
         instance = cls()
         # get postgres env variables
         host, port, db, user, password = load_postgres_env_variables()
-        
+
         # connect to DB
         conn_str = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{db}"
         try:
@@ -31,24 +34,26 @@ class SQLDBManager():
             # print("connected to database")
         except Exception as e:
             print(f"connection to database failed: {e}")
-        
+
         return instance
-        
-    def filter_table(self, src_table: str, req_cols_path: str, primary_key: str, overwrite=False):
-        '''
+
+    def filter_table(
+        self, src_table: str, req_cols_path: str, primary_key: str, overwrite=False
+    ):
+        """
         Create new table with only required fields from old table.
         Args:
             src_table (str): name of table to filter
             req_cols_path (str): path to file with required fields
             primary_key (str): name of primary key
             overwrite (bool): overwrite table if it already exists
-        '''
+        """
         # read required fields from file
-        with open(req_cols_path, 'r') as file:
+        with open(req_cols_path, "r") as file:
             cols = [line.strip() for line in file.readlines()]
-        cols = ', '.join(cols)
-        
-        data_table = f'{src_table}_filtered'
+        cols = ", ".join(cols)
+
+        data_table = f"{src_table}_filtered"
 
         if overwrite:
             # drop table if it already exists
@@ -66,24 +71,31 @@ class SQLDBManager():
             print(f"table {data_table} created successfully.")
         except Exception as e:
             print(f"an error occurred: {e}")
-            
+
     def clean_html(self, data_table: str, cols_to_clean: list, primary_key: str):
-        '''
+        """
         Clean html from columns in table.
         Args:
             data_table (str): name of table
             cols_to_clean (list): list of columns to clean
             primary_key (str): name of primary key
-        '''
+        """
         for col in cols_to_clean:
             # fetch rows for the column to clean
             rows_str = self.db.run(f"SELECT {primary_key}, {col} FROM {data_table}")
             rows = literal_eval(rows_str)  # convert string to list
-            rows = [(row[0], row[1]) for row in rows]  # convert list of tuples to list of (id, description)
+            rows = [
+                (row[0], row[1]) for row in rows
+            ]  # convert list of tuples to list of (id, description)
 
             # clean html and escape single quotes
-            cleaned_rows = [(row[0], html2text(row[1]) if row[1] else None) for row in rows]
-            cleaned_rows = [(row[0], row[1].replace("'", "''") if row[1] else 'NULL') for row in cleaned_rows]
+            cleaned_rows = [
+                (row[0], html2text(row[1]) if row[1] else None) for row in rows
+            ]
+            cleaned_rows = [
+                (row[0], row[1].replace("'", "''") if row[1] else "NULL")
+                for row in cleaned_rows
+            ]
 
             # update the database with cleaned text
             for pk, cleaned_text in cleaned_rows:
@@ -93,28 +105,32 @@ class SQLDBManager():
                 except Exception as e:
                     print(f"error updating row {pk}: {e}")
                     continue
-                            
+
     def embed_objs(self, data_table: str, cols_to_embed: list, pk: str):
-        '''
+        """
         Create new column in table with embeddings.
         Args:
             data_table (str): name of table
             cols_to_embed (list): list of column names to embed
             pk (str): name of the primary key or unique identifier column
-        '''
+        """
         # check and create a column for embeddings if it doesn't exist
         embs_col_name = "embeddings"
-        self.db.run(f"ALTER TABLE {data_table} ADD COLUMN IF NOT EXISTS {embs_col_name} DOUBLE PRECISION[];")
+        self.db.run(
+            f"ALTER TABLE {data_table} ADD COLUMN IF NOT EXISTS {embs_col_name} DOUBLE PRECISION[];"
+        )
 
         # get column values to embed and the ids
-        cols_to_embed_str = ', '.join(cols_to_embed)
-        result_str = self.db.run(f'SELECT {pk}, {cols_to_embed_str} FROM {data_table}')
+        cols_to_embed_str = ", ".join(cols_to_embed)
+        result_str = self.db.run(f"SELECT {pk}, {cols_to_embed_str} FROM {data_table}")
         ids_and_values = literal_eval(result_str)
         ids = [row[0] for row in ids_and_values]
-        column_values = [' '.join(map(str, row[1:])) for row in ids_and_values]
+        column_values = [" ".join(map(str, row[1:])) for row in ids_and_values]
 
         # create embeddings
-        embs_model = AzureOpenAIEmbeddings(azure_deployment="text-embedding-ada-002") # instantiate embeddings model
+        embs_model = AzureOpenAIEmbeddings(
+            azure_deployment="text-embedding-ada-002"
+        )  # instantiate embeddings model
         embeddings = embs_model.embed_documents(column_values)
 
         # update table with embeddings
@@ -127,14 +143,14 @@ class SQLDBManager():
                 print(f"an error occurred: {e}")
 
         print(f"embeddings col {embs_col_name} created successfully.")
-              
+
     def drop_cols(self, table_name: str, cols_to_drop: list):
-        '''
+        """
         Drop columns from table.
         Args:
             table_name (str): name of table
             cols_to_drop (list): list of column names to drop
-        '''
+        """
         for col in cols_to_drop:
             # drop column
             drop_col_query = f"ALTER TABLE {table_name} DROP COLUMN {col};"
@@ -142,14 +158,14 @@ class SQLDBManager():
                 self.db.run(drop_col_query)
             except Exception as e:
                 print(f"an error occurred while dropping column {col}: {e}")
-        print('done.')
-        
+        print("done.")
+
     def drop_table(self, table_name: str):
-        '''
+        """
         Drop table.
         Args:
             table_name (str): name of table
-        '''
+        """
         # drop table
         drop_table_query = f"""
         DROP TABLE {table_name};
@@ -161,68 +177,74 @@ class SQLDBManager():
             print(f"an error occurred: {e}")
 
     def get_col_names(self, schema: str, table: str) -> list:
-        '''
+        """
         Get column names from table.
-        '''
-        select_cols_q = f'''
+        """
+        select_cols_q = f"""
             SELECT column_name
             FROM information_schema.columns
             WHERE table_schema = '{schema}'
             AND table_name = '{table}';
-        '''
+        """
         cols = self.db.run(select_cols_q)
         cols = literal_eval(cols)
         cols = [col[0] for col in cols]
-        
+
         return cols
 
-class Neo4jGraphManager():
-    '''
+
+class Neo4jGraphManager:
+    """
     Class for managing Neo4j graph database.
-    '''
+    """
+
     def __init__(self):
         pass
-    
+
     @classmethod
     def from_env(cls):
-        '''
+        """
         Connect to database using environment variables.
-        '''
+        """
         instance = cls()
         instance.graph = Neo4jGraph()
         return instance
-    
+
     def from_table(self, table: str, reset=True):
-        '''
+        """
         Create a neo4j graph from a table (in string format)
         Args:
             table (str): name of table
             reset (bool): reset graph if it already exists
-        '''
+        """
         # table_data = parse_db_output(table) # convert string to list of tuples
         # connect to postgres db
         host, port, db, user, password = load_postgres_env_variables()
-        conn = psycopg2.connect(f"host={host} port={port} dbname={db} user={user} password={password}")
-        
+        conn = psycopg2.connect(
+            f"host={host} port={port} dbname={db} user={user} password={password}"
+        )
+
         # fetch data from table
         query = f"SELECT * FROM {table};"
         df = pd.read_sql(query, conn)
-        conn.close()                        
-        
+        conn.close()
+
         if reset:
             # clear graph (in case it already exists)
-            self.graph.query('MATCH (n) DETACH DELETE n')
+            self.graph.query("MATCH (n) DETACH DELETE n")
 
         # iter over df rows
         for _, row in df.iterrows():
             # convert tuple to dict
             # row_dict = {cols[i]: row[i] for i in range(len(cols))}
             row_dict = row.to_dict()
-            obj_class = row_dict.get('pxobjclass', 'Object')
+            obj_class = row_dict.get("objclass", "Object")
             # create a node for each row with dynamic properties
-            self.graph.query(f"CREATE (n:{obj_class}) SET n += $props", {"props": row_dict})
-               
-        # create relationships
+            self.graph.query(
+                f"CREATE (n:{obj_class}) SET n += $props", {"props": row_dict}
+            )
+
+        # create relationships ---> Note: This is specific to the data model, adjust as needed
         # user stories belonging to epics
         self.graph.query(
             """
@@ -245,21 +267,22 @@ class Neo4jGraphManager():
             MERGE (goal)-[:IS_GOAL_OF_PROJECT]->(project)
             """
         )
-        
+
     def embed_objs(
-        self,
-        obj_types: list = ['Epic', 'UserStory', 'Goal', 'Project', 'Backlog'],
-        text_cols: list = ['pylabel', 'description']):
-        '''
+        self, obj_types: list = GRAPH_OBJ_TYPES, cols_to_embed: list = COLS_TO_EMBED
+    ):
+        """
         Get embeddings from text descriptions of objects in graph.
         Args:
         - obj_types (list): list of object types
         - text_cols (list): list of text columns to embed
-        '''
-        embs_model = AzureOpenAIEmbeddings(azure_deployment="text-embedding-ada-002") # instantiate embeddings model
-        
-        url, username, password, db = load_neo4j_env_variables()    # load neo4j env vars
-        
+        """
+        embs_model = AzureOpenAIEmbeddings(
+            azure_deployment="text-embedding-ada-002"
+        )  # instantiate embeddings model
+
+        url, username, password, db = load_neo4j_env_variables()  # load neo4j env vars
+
         # create vector index & embs for each object type
         for obj in obj_types:
             vector_index = Neo4jVector.from_existing_graph(
@@ -269,6 +292,6 @@ class Neo4jGraphManager():
                 password=password,
                 index_name=obj,
                 node_label=obj,
-                text_node_properties=text_cols,
-                embedding_node_property='embedding',
+                text_node_properties=cols_to_embed,
+                embedding_node_property="embedding",
             )
